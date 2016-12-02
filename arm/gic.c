@@ -536,6 +536,22 @@ static void test_its_introspection(void)
 			typer->pta ? "Redist basse address" : "PE #");
 }
 
+static void test_its_baser(void)
+{
+	struct its_baser *dev_baser, *coll_baser;
+
+	if (!gicv3_its_base()) {
+		report_skip("No ITS, skip ...");
+		return;
+	}
+
+	dev_baser = its_lookup_baser(GITS_BASER_TYPE_DEVICE);
+	coll_baser = its_lookup_baser(GITS_BASER_TYPE_COLLECTION);
+	report(dev_baser && coll_baser, "detect device and collection BASER");
+	report_info("device baser entry_size = 0x%x", dev_baser->esz);
+	report_info("collection baser entry_size = 0x%x", dev_baser->esz);
+}
+
 int main(int argc, char **argv)
 {
 	if (!gic_init()) {
@@ -570,6 +586,10 @@ int main(int argc, char **argv)
 	} else if (strcmp(argv[1], "its-introspection") == 0) {
 		report_prefix_push(argv[1]);
 		test_its_introspection();
+		report_prefix_pop();
+	} else if (strcmp(argv[1], "its-baser") == 0) {
+		report_prefix_push(argv[1]);
+		test_its_baser();
 		report_prefix_pop();
 	} else {
 		report_abort("Unknown subtest '%s'", argv[1]);
