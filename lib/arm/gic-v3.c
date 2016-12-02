@@ -5,6 +5,7 @@
  */
 #include <asm/gic.h>
 #include <asm/io.h>
+#include <alloc_page.h>
 
 void gicv3_set_redist_base(size_t stride)
 {
@@ -147,3 +148,66 @@ void gicv3_ipi_send_single(int irq, int cpu)
 	cpumask_set_cpu(cpu, &dest);
 	gicv3_ipi_send_mask(irq, &dest);
 }
+
+#if defined(__aarch64__)
+/* alloc_lpi_tables: Allocate LPI config and pending tables */
+void gicv3_lpi_alloc_tables(void)
+{
+	unsigned long n = SZ_64K >> PAGE_SHIFT;
+	unsigned long order = fls(n);
+	u64 prop_val;
+	int cpu;
+
+	gicv3_data.lpi_prop = alloc_pages(order);
+
+	/* ID bits = 13, ie. up to 14b LPI INTID */
+	prop_val = (u64)virt_to_phys(gicv3_data.lpi_prop) | 13;
+
+	/*
+	 * Allocate pending tables for each redistributor
+	 * and set PROPBASER and PENDBASER
+	 */
+	for_each_present_cpu(cpu) {
+		u64 pend_val;
+		void *ptr;
+
+		ptr = gicv3_data.redist_base[cpu];
+
+		writeq(prop_val, ptr + GICR_PROPBASER);
+
+		gicv3_data.lpi_pend[cpu] = alloc_pages(order);
+
+		pend_val = (u64)virt_to_phys(gicv3_data.lpi_pend[cpu]);
+
+		writeq(pend_val, ptr + GICR_PENDBASER);
+	}
+}
+
+void gicv3_lpi_set_config(int n, u8 value)
+{
+	u8 *entry = (u8 *)(gicv3_data.lpi_prop + (n - 8192));
+
+	*entry = value;
+}
+
+u8 gicv3_lpi_get_config(int n)
+{
+	u8 *entry = (u8 *)(gicv3_data.lpi_prop + (n - 8192));
+
+	return *entry;
+}
+
+void gicv3_lpi_set_pending_table_bit(int rdist, int n, bool set)
+{
+	u8 *ptr = phys_to_virt((phys_addr_t)gicv3_data.lpi_pend[rdist]);
+	u8 mask = 1 << (n % 8), byte;
+
+	ptr += (n / 8);
+	byte = *ptr;
+	if (set)
+		byte |=  mask;
+	else
+		byte &= ~mask;
+	*ptr = byte;
+}
+#endif /* __aarch64__ */
