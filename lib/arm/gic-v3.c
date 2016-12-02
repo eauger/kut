@@ -150,7 +150,14 @@ void gicv3_ipi_send_single(int irq, int cpu)
 }
 
 #if defined(__aarch64__)
-/* alloc_lpi_tables: Allocate LPI config and pending tables */
+
+/**
+ * alloc_lpi_tables - Allocate LPI config and pending tables
+ * and set PROPBASER (shared by all rdistributors) and per
+ * redistributor PENDBASER.
+ *
+ * gicv3_set_redist_base() must be called before
+ */
 void gicv3_lpi_alloc_tables(void)
 {
 	unsigned long n = SZ_64K >> PAGE_SHIFT;
@@ -161,13 +168,9 @@ void gicv3_lpi_alloc_tables(void)
 	gicv3_data.lpi_prop = alloc_pages(order);
 
 	/* ID bits = 13, ie. up to 14b LPI INTID */
-	prop_val = (u64)virt_to_phys(gicv3_data.lpi_prop) | 13;
+	prop_val = (u64)(virt_to_phys(gicv3_data.lpi_prop)) | 13;
 
-	/*
-	 * Allocate pending tables for each redistributor
-	 * and set PROPBASER and PENDBASER
-	 */
-	for_each_present_cpu(cpu) {
+	for (cpu = 0; cpu < nr_cpus; cpu++) {
 		u64 pend_val;
 		void *ptr;
 
@@ -176,30 +179,14 @@ void gicv3_lpi_alloc_tables(void)
 		writeq(prop_val, ptr + GICR_PROPBASER);
 
 		gicv3_data.lpi_pend[cpu] = alloc_pages(order);
-
-		pend_val = (u64)virt_to_phys(gicv3_data.lpi_pend[cpu]);
-
+		pend_val = (u64)(virt_to_phys(gicv3_data.lpi_pend[cpu]));
 		writeq(pend_val, ptr + GICR_PENDBASER);
 	}
 }
 
-void gicv3_lpi_set_config(int n, u8 value)
+void gicv3_lpi_set_clr_pending(int rdist, int n, bool set)
 {
-	u8 *entry = (u8 *)(gicv3_data.lpi_prop + (n - 8192));
-
-	*entry = value;
-}
-
-u8 gicv3_lpi_get_config(int n)
-{
-	u8 *entry = (u8 *)(gicv3_data.lpi_prop + (n - 8192));
-
-	return *entry;
-}
-
-void gicv3_lpi_set_pending_table_bit(int rdist, int n, bool set)
-{
-	u8 *ptr = phys_to_virt((phys_addr_t)gicv3_data.lpi_pend[rdist]);
+	u8 *ptr = gicv3_data.lpi_pend[rdist];
 	u8 mask = 1 << (n % 8), byte;
 
 	ptr += (n / 8);
@@ -209,5 +196,30 @@ void gicv3_lpi_set_pending_table_bit(int rdist, int n, bool set)
 	else
 		byte &= ~mask;
 	*ptr = byte;
+}
+
+static void gicv3_lpi_rdist_ctrl(u32 redist, bool set)
+{
+	void *ptr;
+	u64 val;
+
+	assert(redist < nr_cpus);
+
+	ptr = gicv3_data.redist_base[redist];
+	val = readl(ptr + GICR_CTLR);
+	if (set)
+		val |= GICR_CTLR_ENABLE_LPIS;
+	else
+		val &= ~GICR_CTLR_ENABLE_LPIS;
+	writel(val,  ptr + GICR_CTLR);
+}
+
+void gicv3_lpi_rdist_enable(int redist)
+{
+	gicv3_lpi_rdist_ctrl(redist, true);
+}
+void gicv3_lpi_rdist_disable(int redist)
+{
+	gicv3_lpi_rdist_ctrl(redist, false);
 }
 #endif /* __aarch64__ */

@@ -50,15 +50,16 @@
 #define MPIDR_TO_SGI_AFFINITY(cluster_id, level) \
 	(MPIDR_AFFINITY_LEVEL(cluster_id, level) << ICC_SGI1R_AFFINITY_## level ## _SHIFT)
 
-#define GICR_PROPBASER_IDBITS_MASK                      (0x1f)
+#define GICR_PENDBASER_PTZ		BIT_ULL(62)
 
-#define GICR_PENDBASER_PTZ                              BIT_ULL(62)
+#define LPI_PROP_GROUP1			(1 << 1)
+#define LPI_PROP_ENABLED		(1 << 0)
+#define LPI_PROP_DEFAULT_PRIO		0xa0
+#define LPI_PROP_DEFAULT		(LPI_PROP_DEFAULT_PRIO | LPI_PROP_GROUP1 | LPI_PROP_ENABLED)
 
-#define LPI_PROP_GROUP1		(1 << 1)
-#define LPI_PROP_ENABLED	(1 << 0)
-#define LPI_PROP_DEFAULT_PRIO   0xa0
-#define LPI_PROP_DEFAULT	(LPI_PROP_DEFAULT_PRIO | LPI_PROP_GROUP1 | \
-				 LPI_PROP_ENABLED)
+#define LPI_ID_BASE			8192
+#define LPI(lpi)			((lpi) + LPI_ID_BASE)
+#define LPI_OFFSET(intid)		((intid) - LPI_ID_BASE)
 
 #include <asm/arch_gicv3.h>
 
@@ -76,7 +77,7 @@ struct gicv3_data {
 	void *dist_base;
 	void *redist_bases[GICV3_NR_REDISTS];
 	void *redist_base[NR_CPUS];
-	void *lpi_prop;
+	u8 *lpi_prop;
 	void *lpi_pend[NR_CPUS];
 	unsigned int irq_nr;
 };
@@ -96,8 +97,10 @@ extern void gicv3_ipi_send_mask(int irq, const cpumask_t *dest);
 extern void gicv3_set_redist_base(size_t stride);
 extern void gicv3_lpi_set_config(int n, u8 val);
 extern u8 gicv3_lpi_get_config(int n);
-extern void gicv3_lpi_set_pending_table_bit(int rdist, int n, bool set);
+extern void gicv3_lpi_set_clr_pending(int rdist, int n, bool set);
 extern void gicv3_lpi_alloc_tables(void);
+extern void gicv3_lpi_rdist_enable(int redist);
+extern void gicv3_lpi_rdist_disable(int redist);
 
 static inline void gicv3_do_wait_for_rwp(void *base)
 {
@@ -142,6 +145,13 @@ static inline u64 mpidr_uncompress(u32 compressed)
 	mpidr |= compressed & MPIDR_HWID_BITMASK;
 	return mpidr;
 }
+
+#define gicv3_lpi_set_config(intid, value) ({		\
+	gicv3_data.lpi_prop[LPI_OFFSET(intid)] = value; \
+})
+
+#define gicv3_lpi_get_config(intid) (gicv3_data.lpi_prop[LPI_OFFSET(intid)])
+
 
 #endif /* !__ASSEMBLY__ */
 #endif /* _ASMARM_GIC_V3_H_ */
