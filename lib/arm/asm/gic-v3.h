@@ -96,6 +96,7 @@ extern void gicv3_lpi_set_config(int n, u8 val);
 extern u8 gicv3_lpi_get_config(int n);
 extern void gicv3_lpi_set_pending_table_bit(int rdist, int n, bool set);
 extern void gicv3_lpi_alloc_tables(void);
+extern void gicv3_lpi_rdist_ctrl(u32 redist, bool set);
 
 static inline void gicv3_do_wait_for_rwp(void *base)
 {
