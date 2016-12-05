@@ -257,3 +257,49 @@ void its_enable_defaults(void)
 
 	writel(GITS_CTLR_ENABLE, its_data.base + GITS_CTLR);
 }
+
+struct its_device *its_create_device(u32 device_id, int nr_ites)
+{
+	struct its_baser *baser;
+	struct its_device *new;
+	unsigned long n, order;
+
+	if (its_data.nr_devices >= GITS_MAX_DEVICES)
+		report_abort("%s redimension GITS_MAX_DEVICES", __func__);
+
+	baser = its_lookup_baser(GITS_BASER_TYPE_DEVICE);
+	if (!baser)
+		return NULL;
+
+	new = &its_data.devices[its_data.nr_devices];
+
+	new->device_id = device_id;
+	new->nr_ites = nr_ites;
+
+	n = (its_data.typer.ite_size * nr_ites) >> PAGE_SHIFT;
+	order = is_power_of_2(n) ? fls(n) : fls(n) + 1;
+	new->itt = (void *)virt_to_phys(alloc_pages(order));
+
+	its_data.nr_devices++;
+	return new;
+}
+
+struct its_collection *its_create_collection(u32 col_id, u32 pe)
+{
+	struct its_collection *new;
+
+	if (its_data.nr_collections >= GITS_MAX_COLLECTIONS)
+		report_abort("%s redimension GITS_MAX_COLLECTIONS", __func__);
+
+	new = &its_data.collections[its_data.nr_collections];
+
+	new->col_id = col_id;
+
+	if (its_data.typer.pta)
+		new->target_address = (u64)gicv3_data.redist_base[pe];
+	else
+		new->target_address = pe << 16;
+
+	its_data.nr_collections++;
+	return new;
+}
