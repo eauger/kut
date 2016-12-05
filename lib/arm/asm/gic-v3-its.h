@@ -5,9 +5,8 @@
  *
  * This work is licensed under the terms of the GNU LGPL, version 2.
  */
-
-#ifndef _ASMARM_GICv3_ITS
-#define _ASMARM_GICv3_ITS
+#ifndef _ASMARM_GIC_V3_ITS_H_
+#define _ASMARM_GIC_V3_ITS_H_
 
 /* dummy its_data struct to allow gic_get_dt_bases() call */
 struct its_data {
@@ -16,6 +15,10 @@ struct its_data {
 
 static inline void its_init(void) {}
 static inline void test_its_introspection(void)
+{
+	report_abort("not supported on 32-bit");
+}
+static inline void test_its_trigger(void)
 {
 	report_abort("not supported on 32-bit");
 }
