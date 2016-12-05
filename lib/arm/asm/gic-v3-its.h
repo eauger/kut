@@ -123,6 +123,16 @@ struct its_data {
 	u32 nr_collections;	/* Allocated Collections */
 };
 
+struct its_event {
+	int cpu_id;
+	int lpi_id;
+};
+
+struct its_stats {
+	struct its_event expected;
+	struct its_event observed;
+};
+
 extern struct its_data its_data;
 
 #define gicv3_its_base()		(its_data.base)
@@ -139,6 +149,10 @@ extern void gicv3_rdist_ctrl_lpi(u32 redist, bool set);
 extern void its_enable_defaults(void);
 extern struct its_device *its_create_device(u32 dev_id, int nr_ites);
 extern struct its_collection *its_create_collection(u32 col_id, u32 target_pe);
+extern struct its_collection *its_create_collection(u32 col_id, u32 target);
+
+extern void set_lpi_config(int n, u8 val);
+extern u8 get_lpi_config(int n);
 
 extern void its_send_mapd(struct its_device *dev, int valid);
 extern void its_send_mapc(struct its_collection *col, int valid);
