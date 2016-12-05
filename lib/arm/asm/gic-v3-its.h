@@ -45,6 +45,8 @@ struct its_collection {
 	u16 col_id;
 };
 
+struct its_cmd_block;
+
 struct its_data {
 	void *base;
 	struct its_typer typer;
@@ -107,6 +109,24 @@ extern struct its_data its_data;
 #define GITS_BASER_TYPE_DEVICE		1
 #define GITS_BASER_TYPE_COLLECTION	4
 
+/*
+ * ITS commands
+ */
+#define GITS_CMD_MAPD                   0x08
+#define GITS_CMD_MAPC                   0x09
+#define GITS_CMD_MAPTI                  0x0a
+/* older GIC documentation used MAPVI for this command */
+#define GITS_CMD_MAPVI                  GITS_CMD_MAPTI
+#define GITS_CMD_MAPI                   0x0b
+#define GITS_CMD_MOVI                   0x01
+#define GITS_CMD_DISCARD                0x0f
+#define GITS_CMD_INV                    0x0c
+#define GITS_CMD_MOVALL                 0x0e
+#define GITS_CMD_INVALL                 0x0d
+#define GITS_CMD_INT                    0x03
+#define GITS_CMD_CLEAR                  0x04
+#define GITS_CMD_SYNC                   0x05
+
 struct its_cmd_block {
 	u64 raw_cmd[4];
 };
@@ -119,11 +139,27 @@ extern void its_enable_defaults(void);
 extern struct its_device *its_create_device(u32 dev_id, int nr_ites);
 extern struct its_collection *its_create_collection(u32 col_id, u32 target_pe);
 
+extern void its_send_mapd(struct its_device *dev, int valid);
+extern void its_send_mapc(struct its_collection *col, int valid);
+extern void its_send_mapti(struct its_device *dev, u32 irq_id,
+			   u32 event_id, struct its_collection *col);
+extern void its_send_int(struct its_device *dev, u32 event_id);
+extern void its_send_inv(struct its_device *dev, u32 event_id);
+extern void its_send_discard(struct its_device *dev, u32 event_id);
+extern void its_send_clear(struct its_device *dev, u32 event_id);
+extern void its_send_invall(struct its_collection *col);
+extern void its_send_movi(struct its_device *dev,
+			  struct its_collection *col, u32 id);
+extern void its_send_sync(struct its_collection *col);
+
+#define ITS_FLAGS_CMDQ_NEEDS_FLUSHING           (1ULL << 0)
+#define ITS_FLAGS_WORKAROUND_CAVIUM_22375       (1ULL << 1)
+#define ITS_FLAGS_WORKAROUND_CAVIUM_23144       (1ULL << 2)
+
 #else /* __arm__ */
 
 static inline void its_init(void) {}
 
 #endif
-
 #endif /* !__ASSEMBLY__ */
 #endif /* _ASMARM_GIC_V3_ITS_H_ */
