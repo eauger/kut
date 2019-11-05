@@ -287,21 +287,27 @@ int main(int argc, char *argv[])
 {
 	int cpi = 0;
 
-	if (argc > 1)
-		cpi = atol(argv[1]);
-
 	if (!pmu_probe()) {
 		printf("No PMU found, test skipped...\n");
 		return report_summary();
 	}
 
+	if (argc < 2)
+		report_abort("no test specified");
+
 	report_prefix_push("pmu");
 
-	report("Control register", check_pmcr());
-	report("Monotonically increasing cycle count", check_cycles_increase());
-	report("Cycle/instruction ratio", check_cpi(cpi));
-
-	pmccntr64_test();
+	if (strcmp(argv[1], "cycle-counter") == 0) {
+		report_prefix_push(argv[1]);
+		if (argc > 2)
+			cpi = atol(argv[2]);
+		report("Control register", check_pmcr());
+		report("Monotonically increasing cycle count", check_cycles_increase());
+		report("Cycle/instruction ratio", check_cpi(cpi));
+		pmccntr64_test();
+	} else {
+		report_abort("Unknown subtest '%s'", argv[1]);
+	}
 
 	return report_summary();
 }
