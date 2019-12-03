@@ -114,6 +114,8 @@ static void test_event_introspection(void) {}
 static void test_event_counter_config(void) {}
 static void test_basic_event_count(void) {}
 static void test_mem_access(void) {}
+static void test_chained_counters(void) {}
+static void test_chained_sw_incr(void) {}
 
 #elif defined(__aarch64__)
 #define ID_AA64DFR0_PERFMON_SHIFT 8
@@ -452,6 +454,123 @@ static void test_mem_access(void)
 			read_sysreg(pmovsclr_el0));
 }
 
+static void test_chained_counters(void)
+{
+	uint32_t events[] = { 0x11 /* CPU_CYCLES */, 0x1E /* CHAIN */};
+
+	if (!satisfy_prerequisites(events, ARRAY_SIZE(events)))
+		return;
+
+	pmu_reset();
+
+        write_regn(pmevtyper, 0, events[0] | PMEVTYPER_EXCLUDE_EL0);
+        write_regn(pmevtyper, 1, events[1] | PMEVTYPER_EXCLUDE_EL0);
+	/* enable counters #0 and #1 */
+	write_sysreg_s(0x3, PMCNTENSET_EL0);
+	/* preset counter #0 at 0xFFFFFFF0 */
+	write_regn(pmevcntr, 0, 0xFFFFFFF0);
+
+	precise_instrs_loop(22, pmu.pmcr_ro | PMU_PMCR_E);
+
+	report("CHAIN counter #1 incremented", read_regn(pmevcntr, 1) == 1); 
+	report("check no overflow is recorded", !read_sysreg(pmovsclr_el0));
+
+	/* test 64b overflow */
+
+	pmu_reset();
+	write_sysreg_s(0x3, PMCNTENSET_EL0);
+
+	write_regn(pmevcntr, 0, 0xFFFFFFF0);
+	write_regn(pmevcntr, 1, 0x1);
+	precise_instrs_loop(22, pmu.pmcr_ro | PMU_PMCR_E);
+	report_info("overflow reg = 0x%lx", read_sysreg(pmovsclr_el0));
+	report("CHAIN counter #1 incremented", read_regn(pmevcntr, 1) == 2); 
+	report("check no overflow is recorded", !read_sysreg(pmovsclr_el0));
+
+	write_regn(pmevcntr, 0, 0xFFFFFFF0);
+	write_regn(pmevcntr, 1, 0xFFFFFFFF);
+
+	precise_instrs_loop(22, pmu.pmcr_ro | PMU_PMCR_E);
+	report_info("overflow reg = 0x%lx", read_sysreg(pmovsclr_el0));
+	report("CHAIN counter #1 wrapped", !read_regn(pmevcntr, 1)); 
+	report("check no overflow is recorded", read_sysreg(pmovsclr_el0) == 0x2);
+}
+
+static void test_chained_sw_incr(void)
+{
+	uint32_t events[] = { 0x0 /* SW_INCR */, 0x0 /* SW_INCR */};
+	int i;
+
+	if (!satisfy_prerequisites(events, ARRAY_SIZE(events)))
+		return;
+
+	pmu_reset();
+
+        write_regn(pmevtyper, 0, events[0] | PMEVTYPER_EXCLUDE_EL0);
+        write_regn(pmevtyper, 1, events[1] | PMEVTYPER_EXCLUDE_EL0);
+	/* enable counters #0 and #1 */
+	write_sysreg_s(0x3, PMCNTENSET_EL0);
+
+	/* preset counter #0 at 0xFFFFFFF0 */
+	write_regn(pmevcntr, 0, 0xFFFFFFF0);
+
+	for (i = 0; i < 100; i++) {
+		write_sysreg(0x1, pmswinc_el0);
+	}
+	report_info("SW_INCR counter #0 has value %ld", read_regn(pmevcntr, 0)); 
+	report("PWSYNC does not increment if PMCR.E is unset",
+		read_regn(pmevcntr, 0) == 0xFFFFFFF0);
+
+	pmu_reset();
+
+	write_regn(pmevcntr, 0, 0xFFFFFFF0);
+	write_sysreg_s(0x3, PMCNTENSET_EL0);
+	set_pmcr(pmu.pmcr_ro | PMU_PMCR_E);
+
+	for (i = 0; i < 100; i++) {
+		write_sysreg(0x3, pmswinc_el0);
+	}
+	report("counter #1 after + 100 SW_INCR", read_regn(pmevcntr, 0)  == 84);
+	report("counter #0 after + 100 SW_INCR", read_regn(pmevcntr, 1)  == 100);
+	report_info(" counter values after 100 SW_INCR #0=%ld #1=%ld",
+			read_regn(pmevcntr, 0), read_regn(pmevcntr, 1));
+	report("overflow reg after 100 SW_INCR", read_sysreg(pmovsclr_el0) == 0x1);
+
+	/* 64b SW_INCR */
+	pmu_reset();
+
+	events[1] = 0x1E /* CHAIN */;
+        write_regn(pmevtyper, 1, events[1] | PMEVTYPER_EXCLUDE_EL0);
+	write_regn(pmevcntr, 0, 0xFFFFFFF0);
+	write_sysreg_s(0x3, PMCNTENSET_EL0);
+	set_pmcr(pmu.pmcr_ro | PMU_PMCR_E);
+	for (i = 0; i < 100; i++) {
+		write_sysreg(0x3, pmswinc_el0);
+	}
+	report("overflow reg after 100 SW_INCR/CHAIN",
+		!read_sysreg(pmovsclr_el0) && (read_regn(pmevcntr, 1) == 1));
+	report_info("overflow=0x%lx, #0=%ld #1=%ld", read_sysreg(pmovsclr_el0),
+		    read_regn(pmevcntr, 0), read_regn(pmevcntr, 1));
+
+	/* 64b SW_INCR and overflow on CHAIN counter*/
+	pmu_reset();
+
+        write_regn(pmevtyper, 1, events[1] | PMEVTYPER_EXCLUDE_EL0);
+	write_regn(pmevcntr, 0, 0xFFFFFFF0);
+	write_regn(pmevcntr, 1, 0xFFFFFFFF);
+	write_sysreg_s(0x3, PMCNTENSET_EL0);
+	set_pmcr(pmu.pmcr_ro | PMU_PMCR_E);
+	for (i = 0; i < 100; i++) {
+		write_sysreg(0x3, pmswinc_el0);
+	}
+	report("overflow reg after 100 SW_INCR/CHAIN",
+		(read_sysreg(pmovsclr_el0) == 0x2) &&
+		(read_regn(pmevcntr, 1) == 0) &&
+		(read_regn(pmevcntr, 0) == 84));
+	report_info("overflow=0x%lx, #0=%ld #1=%ld", read_sysreg(pmovsclr_el0),
+		    read_regn(pmevcntr, 0), read_regn(pmevcntr, 1));
+}
+
 #endif
 
 /*
@@ -648,6 +767,12 @@ int main(int argc, char *argv[])
 	} else if (strcmp(argv[1], "mem-access") == 0) {
 		report_prefix_push(argv[1]);
 		test_mem_access();
+	} else if (strcmp(argv[1], "chained-counters") == 0) {
+		report_prefix_push(argv[1]);
+		test_chained_counters();
+	} else if (strcmp(argv[1], "chained-sw-incr") == 0) {
+		report_prefix_push(argv[1]);
+		test_chained_sw_incr();
 	} else {
 		report_abort("Unknown subtest '%s'", argv[1]);
 	}
