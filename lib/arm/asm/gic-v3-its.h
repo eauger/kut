@@ -22,5 +22,9 @@ static inline void test_its_trigger(void)
 {
 	report_abort("not supported on 32-bit");
 }
+static inline void test_its_migration(void)
+{
+	report_abort("not supported on 32-bit");
+}
 
 #endif /* _ASMARM_GICv3_ITS */
