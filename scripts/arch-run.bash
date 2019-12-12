@@ -28,6 +28,7 @@ run_qemu ()
 {
 	local stdout errors ret sig
 
+	echo "*** run_qemu $@"
 	echo -n "$@"
 	initrd_create &&
 		echo -n " #"
@@ -137,6 +138,7 @@ run_migration ()
 	while ! grep -q -i "migrate" < ${migout1} ; do
 		sleep 1
 	done
+	echo "***** received migrate keyword, start migration ******"
 
 	qmp ${qmp1} '"migrate", "arguments": { "uri": "unix:'${migsock}'" }' > ${qmpout1}
 
@@ -152,8 +154,10 @@ run_migration ()
 			return 2
 		fi
 	done
+	echo "**** migstatus: $migstatus"
 	qmp ${qmp1} '"quit"'> ${qmpout1} 2>/dev/null
 	echo > ${fifo}
+	echo "**** send to the fifo"
 	wait $incoming_pid
 	ret=$?
 	wait
