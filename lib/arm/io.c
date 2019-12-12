@@ -87,6 +87,19 @@ void puts(const char *s)
 	spin_unlock(&uart_lock);
 }
 
+/*
+ * Minimalist implementation for migration completion detection.
+ * Needs to be improved for more advanced Rx cases
+ */
+int __getchar(void)
+{
+	int ret;
+
+	ret = readb(uart0_base);
+	if (!ret)
+		return -1;
+	return ret;
+}
 
 /*
  * Defining halt to take 'code' as an argument guarantees that it will
