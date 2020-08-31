@@ -23,5 +23,6 @@
 #define smp_mb()	dmb(ish)
 #define smp_rmb()	dmb(ishld)
 #define smp_wmb()	dmb(ishst)
+#define psb_csync()	asm volatile("hint #17" : : : "memory")
 
 #endif /* _ASMARM64_BARRIER_H_ */
