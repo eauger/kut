@@ -56,6 +56,7 @@
 #define EXT_COMMON_EVENTS_HIGH	0x403F
 
 #define ALL_SET_32		0x00000000FFFFFFFFULL
+#define ALL_SET_64		0xFFFFFFFFFFFFFFFFULL
 #define ALL_CLEAR		0x0000000000000000ULL
 #define PRE_OVERFLOW_32		0x00000000FFFFFFF0ULL
 #define PRE_OVERFLOW_64		0xFFFFFFFFFFFFFFF0ULL
@@ -67,6 +68,10 @@
  * for some observed variability we take into account a given @MARGIN
  */
 #define PRE_OVERFLOW2_32		(ALL_SET_32 - COUNT - MARGIN)
+#define PRE_OVERFLOW2_64		(ALL_SET_64 - COUNT - MARGIN)
+
+#define PRE_OVERFLOW2(__overflow_at_64bits)				\
+	(__overflow_at_64bits ? PRE_OVERFLOW2_64 : PRE_OVERFLOW2_32)
 
 #define PRE_OVERFLOW(__overflow_at_64bits)				\
 	(__overflow_at_64bits ? PRE_OVERFLOW_64 : PRE_OVERFLOW_32)
@@ -747,6 +752,56 @@ static void disable_chain_counter(int even)
 	isb();
 }
 
+/*
+ * This test checks that a mem access loop featuring COUNT accesses
+ * does not overflow with an init value of PRE_OVERFLOW2. It also
+ * records the min/max access count to see how much the counting
+ * is (un)reliable
+ */
+static void test_mem_access_reliability(bool overflow_at_64bits)
+{
+	uint32_t events[] = {MEM_ACCESS};
+	void *addr = malloc(PAGE_SIZE);
+	uint64_t count, delta, max = 0, min = pmevcntr_mask();
+	uint64_t pre_overflow2 = PRE_OVERFLOW2(overflow_at_64bits);
+	uint64_t pmcr_lp = overflow_at_64bits ? PMU_PMCR_LP : 0;
+	bool overflow = false;
+
+	if (!satisfy_prerequisites(events, ARRAY_SIZE(events)) ||
+	    !check_overflow_prerequisites(overflow_at_64bits))
+		return;
+
+	pmu_reset();
+	write_regn_el0(pmevtyper, 0, MEM_ACCESS | PMEVTYPER_EXCLUDE_EL0);
+	for (int i = 0; i < 100; i++) {
+		pmu_reset();
+		write_regn_el0(pmevcntr, 0, pre_overflow2);
+		write_sysreg_s(0x1, PMCNTENSET_EL0);
+		isb();
+		mem_access_loop(addr, COUNT, pmu.pmcr_ro | PMU_PMCR_E | pmcr_lp);
+		count = read_regn_el0(pmevcntr, 0);
+		if (count >= pre_overflow2) {
+			/* not counter overflow, as expected */
+			delta = count - pre_overflow2;
+		} else {
+			/*
+			 * unexpected counter overflow meaning the actual
+			 * mem access count, delta, is count + COUNT + MARGIN
+			 */
+			delta = count + COUNT + MARGIN;
+			overflow = true;
+			report_info("iter=%d count=%ld min=%ld max=%ld overflow!!!",
+				    i, delta, min, max);
+		}
+		/* record extreme value */
+		max = MAX(delta, max);
+		min = MIN(delta, min);
+	}
+	report_info("overflow=%d min=%ld max=%ld COUNT=%d MARGIN=%d",
+		    overflow, min, max, COUNT, MARGIN);
+	report(!overflow, "mem_access count is reliable");
+}
+
 static void test_chain_promotion(bool unused)
 {
 	uint32_t events[] = {MEM_ACCESS, CHAIN};
@@ -1204,6 +1259,9 @@ int main(int argc, char *argv[])
 	} else if (strcmp(argv[1], "pmu-basic-event-count") == 0) {
 		run_event_test(argv[1], test_basic_event_count, false);
 		run_event_test(argv[1], test_basic_event_count, true);
+	} else if (strcmp(argv[1], "pmu-mem-access-reliability") == 0) {
+		run_event_test(argv[1], test_mem_access_reliability, false);
+		run_event_test(argv[1], test_mem_access_reliability, true);
 	} else if (strcmp(argv[1], "pmu-mem-access") == 0) {
 		run_event_test(argv[1], test_mem_access, false);
 		run_event_test(argv[1], test_mem_access, true);
