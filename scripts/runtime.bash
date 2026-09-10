@@ -157,6 +157,19 @@ function run()
         return 2;
     fi
 
+    # Group "qemu-reject": expect QEMU to refuse the config before loading
+    # a kernel (invalid SYSREG prop, KVM reject, etc.). premature_failure
+    # returns 0 when QEMU failed for a reason other than the missing probe
+    # kernel, and 1 when QEMU got as far as trying to load it.
+    if find_word "qemu-reject" "$groups"; then
+        if log=$(premature_failure); then
+            print_result "PASS" $testname ""                 "qemu rejected config as expected: $(tail -1 <<<"$log")"
+            return 0
+        fi
+        print_result "FAIL" $testname ""             "qemu accepted config; expected reject"
+        return 1
+    fi
+
     log=$(premature_failure) && {
         skip=true
         if [ "${CONFIG_EFI}" == "y" ]; then

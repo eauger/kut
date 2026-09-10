@@ -96,6 +96,9 @@ option. The group name is arbitrary, except for these special groups:
 - Tests in the "migration" group are run with the migration harness and
   are expected to make migrate_*() calls.
 - Tests in the "panic" group expect QEMU to enter the GUEST_PANICKED state.
+- Tests in the "qemu-reject" group expect QEMU to refuse the VM config
+  before loading the kernel (e.g. invalid SYSREG_* CPU property). A reject
+  is reported as PASS; accepting the config is FAIL.
 
 accel
 -----
